@@ -875,6 +875,294 @@ LIMIT 30;
 
 ![q24](assets/q24.png)
 
+Tambahkan t
+### Q25 - Department Scorecard
+
+Tipe visualisasi: `Table`
+
+Tujuan dan insight:
+
+Query ini menampilkan ringkasan performa setiap department dalam satu tabel, mencakup total item terjual, jumlah produk unik, unique orders, dan reorder rate. Insight utamanya adalah memberikan gambaran menyeluruh kondisi tiap department sekaligus dalam satu pandangan, sehingga bisa langsung dibandingkan tanpa harus melihat chart terpisah.
+
+SQL:
+
+```sql
+SELECT
+    department,
+    count() AS total_items_sold,
+    uniqExact(product_id) AS unique_products,
+    uniqExact(order_id) AS unique_orders,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+```
+
+![q25](assets/q25.png)
+
+### Q26 - Avg Days Between Orders by Interval Segment
+
+Tipe visualisasi: `Bar`
+
+Tujuan dan insight:
+
+Query ini mengelompokkan order ke dalam segmen interval waktu sejak order sebelumnya: kurang dari 7 hari, 7–14 hari, 15–21 hari, dan lebih dari 21 hari, lalu menghitung rata-rata basket size dan reorder rate di tiap segmen. Insight utamanya adalah apakah customer yang belanja lebih sering (interval pendek) juga membeli lebih banyak item dan lebih loyal terhadap produk yang sama.
+
+SQL:
+
+```sql
+SELECT
+    CASE
+        WHEN days_since_prior_order < 7 THEN '< 7 days'
+        WHEN days_since_prior_order < 15 THEN '7-14 days'
+        WHEN days_since_prior_order < 22 THEN '15-21 days'
+        ELSE '> 21 days'
+    END AS interval_segment,
+    uniqExact(order_id) AS total_orders,
+    round(count() / uniqExact(order_id), 2) AS avg_basket_size,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+WHERE days_since_prior_order IS NOT NULL
+GROUP BY interval_segment
+ORDER BY min(days_since_prior_order);
+```
+
+![q26](assets/q26.png)
+
+### Q27 - New vs Returning Product Rate per Order
+
+Tipe visualisasi: `Bar` (stacked)
+
+Tujuan dan insight:
+
+Query ini menghitung rata-rata persentase item baru (reordered = 0) versus item lama (reordered = 1) per order, dikelompokkan per hari dalam seminggu. Berbeda dari reorder rate biasa yang dilihat dari sisi produk, query ini melihat dari sisi komposisi order. Insight utamanya adalah apakah ada hari tertentu di mana customer cenderung lebih banyak mencoba produk baru dibanding membeli ulang produk lama.
+
+SQL:
+
+```sql
+WITH order_composition AS (
+    SELECT
+        order_id,
+        any(order_dow) AS order_dow,
+        round(sumIf(1, reordered = 0) / count() * 100, 2) AS pct_new_products,
+        round(sumIf(1, reordered = 1) / count() * 100, 2) AS pct_returning_products
+    FROM analytics.orders_raw
+    GROUP BY order_id
+)
+SELECT
+    order_dow,
+    arrayElement(
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        order_dow + 1
+    ) AS day_name,
+    round(avg(pct_new_products), 2) AS avg_pct_new,
+    round(avg(pct_returning_products), 2) AS avg_pct_returning
+FROM order_composition
+GROUP BY order_dow
+ORDER BY order_dow;
+```
+
+![q27](assets/q27.png)
+
+### Q28 - Top Aisle per Department
+
+Tipe visualisasi: `Table`
+
+Tujuan dan insight:
+
+Query ini menampilkan aisle dengan total item terjual tertinggi di dalam setiap department, menggunakan window function rank. Insight utamanya adalah memperlihatkan subkategori mana yang mendominasi tiap department, sehingga bisa menjadi acuan drill-down dari department scorecard.
+
+SQL:
+
+```sql
+WITH aisle_metrics AS (
+    SELECT
+        department,
+        aisle,
+        count() AS total_items_sold,
+        round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
+        rank() OVER (
+            PARTITION BY department
+            ORDER BY count() DESC
+        ) AS rank_in_department
+    FROM analytics.orders_raw
+    GROUP BY department, aisle
+)
+SELECT
+    department,
+    aisle,
+    total_items_sold,
+    reorder_rate_pct,
+    rank_in_department
+FROM aisle_metrics
+WHERE rank_in_department <= 3
+ORDER BY department, rank_in_department;
+```
+
+![q28](assets/q28.png)
+
+### Q29 - User Cohort by Order Frequency Bucket
+
+Tipe visualisasi: `Bar`
+
+Tujuan dan insight:
+
+Query ini mengelompokkan user ke dalam bucket frekuensi order: 1 kali, 2–5 kali, 6–10 kali, dan lebih dari 10 kali, lalu menghitung jumlah user, rata-rata basket size, dan reorder rate di tiap bucket. Insight utamanya adalah memahami karakteristik perilaku belanja berdasarkan tingkat keaktifan user, sehingga bisa dibedakan mana customer kasual, reguler, dan loyal.
+
+SQL:
+
+```sql
+WITH user_stats AS (
+    SELECT
+        user_id,
+        uniqExact(order_id) AS order_count,
+        round(count() / uniqExact(order_id), 2) AS avg_basket_size,
+        round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+    FROM analytics.orders_raw
+    GROUP BY user_id
+)
+SELECT
+    CASE
+        WHEN order_count = 1 THEN '1 order'
+        WHEN order_count <= 5 THEN '2-5 orders'
+        WHEN order_count <= 10 THEN '6-10 orders'
+        ELSE '> 10 orders'
+    END AS frequency_bucket,
+    count() AS total_users,
+    round(avg(avg_basket_size), 2) AS avg_basket_size,
+    round(avg(reorder_rate_pct), 2) AS avg_reorder_rate_pct
+FROM user_stats
+GROUP BY frequency_bucket
+ORDER BY min(order_count);
+```
+
+![q29](assets/q29.png)
+
+### Q30 - Reorder Rate by Hour of Day
+
+Tipe visualisasi: `Line`
+
+Tujuan dan insight:
+
+Query ini menyilangkan jam order dengan reorder rate, melengkapi Q11 yang hanya menampilkan volume order per jam. Insight utamanya adalah apakah jam-jam tertentu — misalnya larut malam atau pagi hari — cenderung didominasi pembelian ulang produk yang sudah dikenal, atau justru lebih banyak eksplorasi produk baru.
+
+SQL:
+
+```sql
+SELECT
+    order_hour_of_day AS hour_of_day,
+    uniqExact(order_id) AS total_orders,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY order_hour_of_day
+ORDER BY order_hour_of_day;
+```
+
+![q30](assets/q30.png)
+
+## Unified Metabase Dashboard
+
+Seluruh query analitik dikumpulkan ke dalam satu dashboard terpusat di Metabase untuk mendukung eksplorasi data secara interaktif dan terstruktur. Dashboard disusun dengan alur naratif top-down: dimulai dari KPI utama, dilanjutkan analisis performa produk dan kategori, perilaku customer, pola waktu transaksi, hingga drill-down komposisi cart.
+
+Dashboard juga mendukung filter interaktif sehingga pengguna dapat mengeksplorasi data berdasarkan department, waktu transaksi, maupun perilaku reorder tanpa perlu menjalankan query manual.
+
+### Dashboard Sections
+
+| Section | Fokus Analitik |
+|---------|----------------|
+| KPI Overview | Gambaran umum skala transaksi, jumlah user, volume produk, reorder rate, dan rata-rata ukuran cart |
+| Product & Category Performance | Analisis kontribusi department, aisle, dan produk terhadap volume penjualan dan repeat purchase |
+| User Behavior | Segmentasi perilaku customer berdasarkan frekuensi order, basket size, dan loyalitas reorder |
+| Time Patterns | Pola transaksi dan repeat purchase berdasarkan jam maupun hari order |
+| Cart & Order Deep Dive | Drill-down distribusi cart, posisi item, dan komposisi order untuk memahami pola pembelian lebih detail |
+
+### Section 1 — KPI Overview
+
+Tujuan: pembaca langsung tahu skala data sebelum masuk ke detail.
+
+| Posisi | Query | Tipe |
+|--------|-------|------|
+| 1 | Q01 - Total Unique Orders | Number |
+| 2 | Q02 - Total Unique Users | Number |
+| 3 | Q03 - Total Products Sold | Number |
+| 4 | Q04 - Overall Reorder Rate | Gauge |
+| 5 | Q05 - Avg Products per Order | Progress |
+
+### Section 2 — Product & Category Performance
+
+Tujuan: memahami produk dan kategori mana yang paling dominan.
+
+| Posisi | Query | Tipe |
+|--------|-------|------|
+| 1 | Q25 - Department Scorecard | Table (full width) |
+| 2 | Q06 - Top 10 Most Ordered Products | Bar |
+| 3 | Q07 - Top 10 Products by Reorder Rate | Row |
+| 4 | Q10 - Department Share of Item Sales | Pie |
+| 5 | Q19 - Department Contribution to Total Item Sales | Waterfall |
+| 6 | Q28 - Top Aisle per Department | Table |
+| 7 | Q24 - Department to Aisle Item Flow | Sankey |
+| 8 | Q21 - Product Performance Table with Rank | Table (full width) |
+
+### Section 3 — User Behavior
+
+Tujuan: memahami siapa customer-nya dan bagaimana pola belanja mereka.
+
+| Posisi | Query | Tipe |
+|--------|-------|------|
+| 1 | Q29 - User Cohort by Order Frequency Bucket | Bar |
+| 2 | Q15 - User Order Frequency vs Avg Basket Size | Scatter |
+| 3 | Q26 - Avg Days Between Orders by Interval Segment | Bar |
+| 4 | Q16 - Reorder Rate Across Order Number | Line |
+| 5 | Q17 - Order Volume by Days Since Prior Order | Line |
+| 6 | Q22 - Top 20 Users by Order Activity | Table |
+
+### Section 4 — Time Patterns
+
+Tujuan: menemukan pola waktu order dan perilaku repeat purchase berdasarkan waktu.
+
+| Posisi | Query | Tipe |
+|--------|-------|------|
+| 1 | Q18 - Order Count and Avg Cart Size by Day of Week | Combo |
+| 2 | Q12 - Order Count by Day of Week | Bar |
+| 3 | Q27 - New vs Returning Product Rate by Day | Bar stacked |
+| 4 | Q11 - Order Count by Hour of Day | Line |
+| 5 | Q30 - Reorder Rate by Hour of Day | Line |
+
+### Section 5 — Cart & Order Deep Dive
+
+Tujuan: memahami pola ukuran cart dan komposisi order secara mendalam.
+
+| Posisi | Query | Tipe |
+|--------|-------|------|
+| 1 | Q23 - Cart Position Retention | Funnel |
+| 2 | Q13 - Order Size Distribution | Area |
+| 3 | Q14 - Product Volume vs Reorder Rate | Scatter |
+| 4 | Q20 - Reorder Rate by Department and Day of Week | Table |
+
+### Query yang tidak masuk dashboard
+
+Tiga query sengaja disisihkan karena redundan atau sudah terwakili:
+
+- **Q08** — sudah terwakili Q25 (department scorecard lebih lengkap)
+- **Q09** — sudah terwakili Q28 (top aisle per department lebih informatif)
+- **Q10** — opsional, bisa dimasukkan jika ingin pie chart eksplisit di section 2
+
+### Dashboard Preview
+
+![dashboard](assets/dashboard-1.png)
+![dashboard](assets/dashboard-2.png)
+![dashboard](assets/dashboard-3.png)
+![dashboard](assets/dashboard-4.png)
+![dashboard](assets/dashboard-5.png)
+![dashboard](assets/dashboard-6.png)
+![dashboard](assets/dashboard-7.png)
+![dashboard](assets/dashboard-8.png)
+![dashboard](assets/dashboard-9.png)
+![dashboard](assets/dashboard-10.png)
+![dashboard](assets/dashboard-11.png)
+
+> Dashboard terdiri dari 27 visualisasi utama yang disusun dari total 30 query analitik untuk menghindari redundansi dan menjaga fokus insight pada tiap section.
+
 ## Menghentikan Service
 
 Untuk menghentikan container tanpa menghapus volume:

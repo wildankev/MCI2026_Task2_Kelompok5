@@ -908,8 +908,7 @@ docker-compose down -v
 
 ## Anggota Kelompok
 
-[isi sesuai kelompok]
-
-## Lisensi
-
-Project ini dibuat untuk kebutuhan tugas dan pembelajaran Data Engineering pada MCI 2026.
+| Name           | NRP        |
+| ---            | ---        |
+| Bara Semangat Rohmani | 5025241144 |
+| A. Wildan Kevin Assyauqi | 5025241265 |

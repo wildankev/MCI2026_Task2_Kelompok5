@@ -2,17 +2,9 @@
 
 Repositori ini berisi pipeline data end-to-end untuk mengambil data order dari API, memprosesnya dengan Spark, menyimpan hasilnya ke ClickHouse, lalu membuat dashboard analitik di Metabase.
 
-Repository GitHub:
+Repository GitHub: [https://github.com/wildankev/MCI2026_Task2_Kelompok5](https://github.com/wildankev/MCI2026_Task2_Kelompok5)
 
-```text
-https://github.com/wildankev/MCI2026_Task2_Kelompok5.git
-```
-
-Sumber data:
-
-```text
-http://96.9.212.102:8000/orders
-```
+Sumber data: [http://96.9.212.102:8000/orders](http://96.9.212.102:8000/orders)
 
 Data dari API berbentuk JSON bertingkat. Setiap order memiliki daftar produk di dalam field `products`. Pipeline ini mengubah data tersebut menjadi bentuk tabular, yaitu satu baris untuk satu produk dalam satu order. Bentuk ini lebih mudah dianalisis untuk kebutuhan visualisasi produk, user, reorder, department, aisle, dan ukuran cart.
 
@@ -119,14 +111,14 @@ Service yang akan berjalan:
 
 | Service | URL / Port |
 | --- | --- |
-| Airflow | http://localhost:8080 |
-| Metabase | http://localhost:3000 |
-| ClickHouse HTTP | http://localhost:8123 |
+| Airflow | [http://localhost:8080](http://localhost:8080) |
+| Metabase | [http://localhost:3000](http://localhost:3000) |
+| ClickHouse HTTP | [http://localhost:8123](http://localhost:8123) |
 | ClickHouse TCP | localhost:9000 |
 
 ### 5. Trigger Pipeline di Airflow
 
-1. Buka `http://localhost:8080`.
+1. Buka [http://localhost:8080](http://localhost:8080).
 2. Login dengan user `admin` dan password `admin`.
 3. Cari DAG bernama `orders_pipeline`.
 4. Aktifkan DAG.

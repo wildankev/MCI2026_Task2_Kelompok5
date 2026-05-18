@@ -1,35 +1,35 @@
--- Q01 | KPI / Number Card | Total unique orders
--- Business insight: Measures how many distinct orders have entered the pipeline.
+-- Q01 | Number | Total unique orders
+-- Business insight: Shows how many distinct orders are available for analysis.
 SELECT
     uniqExact(order_id) AS total_unique_orders
 FROM analytics.orders_raw;
 
--- Q02 | KPI / Number Card | Total unique users
--- Business insight: Shows how many customers are represented in the dataset.
+-- Q02 | Number | Total unique users
+-- Business insight: Measures the customer base represented in the loaded data.
 SELECT
     uniqExact(user_id) AS total_unique_users
 FROM analytics.orders_raw;
 
--- Q03 | KPI / Number Card | Total products sold
--- Business insight: Counts product-level line items as the total basket volume.
+-- Q03 | Number | Total products sold
+-- Business insight: Counts all product-level rows as total item sales volume.
 SELECT
     count() AS total_products_sold
 FROM analytics.orders_raw;
 
--- Q04 | KPI / Number Card | Overall reorder rate
--- Business insight: Indicates the share of order lines that are repeat purchases.
+-- Q04 | Gauge | Overall reorder rate
+-- Business insight: Tracks what percentage of purchased items are repeat buys.
 SELECT
     round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
 FROM analytics.orders_raw;
 
--- Q05 | KPI / Number Card | Average products per order
--- Business insight: Captures average basket size across all unique orders.
+-- Q05 | Progress | Average products per order
+-- Business insight: Summarizes basket depth as the average number of items per order.
 SELECT
     round(count() / uniqExact(order_id), 2) AS avg_products_per_order
 FROM analytics.orders_raw;
 
--- Q06 | Bar Chart | Top 10 most ordered products
--- Business insight: Highlights products with the strongest demand by frequency.
+-- Q06 | Bar | Top 10 most ordered products
+-- Business insight: Identifies products with the highest demand by item frequency.
 SELECT
     product_name,
     count() AS total_items_sold
@@ -40,28 +40,8 @@ GROUP BY
 ORDER BY total_items_sold DESC
 LIMIT 10;
 
--- Q07 | Bar Chart | Top 10 departments by total items sold
--- Business insight: Compares category-level contribution to total item volume.
-SELECT
-    department,
-    count() AS total_items_sold
-FROM analytics.orders_raw
-GROUP BY department
-ORDER BY total_items_sold DESC
-LIMIT 10;
-
--- Q08 | Bar Chart | Top 10 aisles by total items sold
--- Business insight: Finds store aisles that dominate basket composition.
-SELECT
-    aisle,
-    count() AS total_items_sold
-FROM analytics.orders_raw
-GROUP BY aisle
-ORDER BY total_items_sold DESC
-LIMIT 10;
-
--- Q09 | Bar Chart | Top 10 products with highest reorder rate
--- Business insight: Finds sticky products among items ordered at least 5 times.
+-- Q07 | Row | Top 10 products by reorder rate
+-- Business insight: Finds sticky products among items ordered at least five times.
 SELECT
     product_name,
     count() AS total_items_sold,
@@ -74,25 +54,37 @@ HAVING total_items_sold >= 5
 ORDER BY reorder_rate_pct DESC, total_items_sold DESC
 LIMIT 10;
 
--- Q10 | Distribution Chart | Order count by day of week
--- Business insight: Reveals weekly shopping patterns from Sunday to Saturday.
+-- Q08 | Bar | Top 10 departments by total items sold
+-- Business insight: Compares department contribution to total sales volume.
 SELECT
-    order_dow,
-    concat(
-        toString(order_dow),
-        ' - ',
-        arrayElement(
-            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-            order_dow + 1
-        )
-    ) AS day_of_week,
-    uniqExact(order_id) AS total_orders
+    department,
+    count() AS total_items_sold
 FROM analytics.orders_raw
-GROUP BY order_dow
-ORDER BY order_dow;
+GROUP BY department
+ORDER BY total_items_sold DESC
+LIMIT 10;
 
--- Q11 | Distribution Chart | Order count by hour of day
--- Business insight: Produces a heatmap-ready view of daily demand peaks.
+-- Q09 | Row | Top 10 aisles by total items sold
+-- Business insight: Highlights the most active aisles for assortment planning.
+SELECT
+    aisle,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY aisle
+ORDER BY total_items_sold DESC
+LIMIT 10;
+
+-- Q10 | Pie | Department share of item sales
+-- Business insight: Shows how much each department contributes to item volume.
+SELECT
+    department,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+
+-- Q11 | Line | Order count by hour of day
+-- Business insight: Reveals peak ordering hours for operational planning.
 SELECT
     order_hour_of_day AS hour_of_day,
     uniqExact(order_id) AS total_orders
@@ -100,8 +92,21 @@ FROM analytics.orders_raw
 GROUP BY order_hour_of_day
 ORDER BY order_hour_of_day;
 
--- Q12 | Distribution Chart | Bucketed order size distribution
--- Business insight: Shows whether baskets are usually small, medium, or large.
+-- Q12 | Bar | Order count by day of week
+-- Business insight: Compares shopping volume from Sunday to Saturday.
+SELECT
+    order_dow,
+    arrayElement(
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        order_dow + 1
+    ) AS day_name,
+    uniqExact(order_id) AS total_orders
+FROM analytics.orders_raw
+GROUP BY order_dow
+ORDER BY order_dow;
+
+-- Q13 | Area | Order size distribution
+-- Business insight: Shows whether most carts are small, medium, or large.
 WITH order_sizes AS (
     SELECT
         order_id,
@@ -125,23 +130,22 @@ FROM bucketed
 GROUP BY bucket_start
 ORDER BY bucket_start;
 
--- Q13 | Scatter / Bubble | Product order volume vs reorder rate
--- Business insight: Separates popular products from products with loyal demand.
+-- Q14 | Scatter | Product volume versus reorder rate
+-- Business insight: Separates high-volume products from products with loyal repeat demand.
 SELECT
     product_name,
-    department AS bubble_group,
     uniqExact(order_id) AS total_orders,
     round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
-    count() AS bubble_size
+    count() AS total_items_sold
 FROM analytics.orders_raw
 GROUP BY
     product_id,
-    product_name,
-    department
+    product_name
+HAVING total_items_sold >= 3
 ORDER BY total_orders DESC;
 
--- Q14 | Scatter / Bubble | User order frequency vs average order size
--- Business insight: Identifies high-frequency users and their basket depth.
+-- Q15 | Scatter | User order frequency versus average basket size
+-- Business insight: Finds users who order often and also buy many products per order.
 WITH user_order_sizes AS (
     SELECT
         user_id,
@@ -160,8 +164,17 @@ FROM user_order_sizes
 GROUP BY user_id
 ORDER BY order_frequency DESC, avg_order_size DESC;
 
--- Q15 | Time / Trend | Order volume by days since prior order
--- Business insight: Shows how long customers usually wait before reordering.
+-- Q16 | Line | Reorder rate across order number
+-- Business insight: Tracks whether customers become more likely to reorder over time.
+SELECT
+    order_number,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY order_number
+ORDER BY order_number;
+
+-- Q17 | Line | Order volume by days since prior order
+-- Business insight: Shows the most common reorder waiting periods.
 SELECT
     days_since_prior_order,
     uniqExact(order_id) AS total_orders
@@ -170,42 +183,12 @@ WHERE days_since_prior_order IS NOT NULL
 GROUP BY days_since_prior_order
 ORDER BY days_since_prior_order;
 
--- Q16 | Time / Trend | Reorder rate across order number
--- Business insight: Tracks customer loyalty as order sequence increases.
-SELECT
-    order_number,
-    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
-    uniqExact(order_id) AS total_orders
-FROM analytics.orders_raw
-GROUP BY order_number
-ORDER BY order_number;
-
--- Q17 | Pivot / Cohort | Reorder rate by department and day of week
--- Business insight: Compares department loyalty patterns across weekdays.
-SELECT
-    department,
-    order_dow,
-    arrayElement(
-        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-        order_dow + 1
-    ) AS day_name,
-    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
-    count() AS total_items_sold
-FROM analytics.orders_raw
-GROUP BY
-    department,
-    order_dow
-ORDER BY
-    department,
-    order_dow;
-
--- Q18 | Pivot / Cohort | Average cart size by hour and day of week
--- Business insight: Supports operational planning by time window.
+-- Q18 | Combo | Order count and average cart size by day of week
+-- Business insight: Compares traffic volume and basket depth on the same weekday chart.
 WITH order_sizes AS (
     SELECT
         order_id,
         any(order_dow) AS order_dow,
-        any(order_hour_of_day) AS order_hour_of_day,
         count() AS cart_size
     FROM analytics.orders_raw
     GROUP BY order_id
@@ -216,19 +199,68 @@ SELECT
         ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
         order_dow + 1
     ) AS day_name,
-    order_hour_of_day,
-    round(avg(cart_size), 2) AS avg_cart_size,
-    count() AS total_orders
+    uniqExact(order_id) AS total_orders,
+    round(avg(cart_size), 2) AS avg_cart_size
 FROM order_sizes
-GROUP BY
-    order_dow,
-    order_hour_of_day
-ORDER BY
-    order_dow,
-    order_hour_of_day;
+GROUP BY order_dow
+ORDER BY order_dow;
 
--- Q19 | Funnel / Table | Product table with reorder rate and department rank
--- Business insight: Ranks products inside each department by sales volume.
+-- Q19 | Waterfall | Department contribution to total item sales
+-- Business insight: Shows which departments add the largest item-volume contribution.
+SELECT
+    department,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC
+LIMIT 12;
+
+-- Q20 | Table | Reorder rate by department and day of week
+-- Business insight: Compares department loyalty across weekdays in a SQL-generated pivot table.
+SELECT
+    department,
+    if(
+        countIf(order_dow = 0) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 0) / countIf(order_dow = 0) * 100, 2)
+    ) AS sun_reorder_rate_pct,
+    if(
+        countIf(order_dow = 1) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 1) / countIf(order_dow = 1) * 100, 2)
+    ) AS mon_reorder_rate_pct,
+    if(
+        countIf(order_dow = 2) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 2) / countIf(order_dow = 2) * 100, 2)
+    ) AS tue_reorder_rate_pct,
+    if(
+        countIf(order_dow = 3) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 3) / countIf(order_dow = 3) * 100, 2)
+    ) AS wed_reorder_rate_pct,
+    if(
+        countIf(order_dow = 4) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 4) / countIf(order_dow = 4) * 100, 2)
+    ) AS thu_reorder_rate_pct,
+    if(
+        countIf(order_dow = 5) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 5) / countIf(order_dow = 5) * 100, 2)
+    ) AS fri_reorder_rate_pct,
+    if(
+        countIf(order_dow = 6) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 6) / countIf(order_dow = 6) * 100, 2)
+    ) AS sat_reorder_rate_pct,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+
+-- Q21 | Table | Product performance table with rank inside department
+-- Business insight: Ranks products within each department by item volume and repeat demand.
 WITH product_metrics AS (
     SELECT
         department,
@@ -258,8 +290,8 @@ ORDER BY
     department,
     rank_within_department;
 
--- Q20 | Funnel / Table | Top 20 users by total orders placed
--- Business insight: Finds the most active customers by distinct order count.
+-- Q22 | Table | Top 20 users by order activity
+-- Business insight: Finds the most active users and their average basket size.
 SELECT
     user_id,
     uniqExact(order_id) AS total_orders,
@@ -269,3 +301,26 @@ FROM analytics.orders_raw
 GROUP BY user_id
 ORDER BY total_orders DESC, total_items_bought DESC
 LIMIT 20;
+
+-- Q23 | Funnel | Cart position retention
+-- Business insight: Shows how many orders reach each add-to-cart position.
+SELECT
+    concat('Item ', toString(add_to_cart_order)) AS cart_step,
+    uniqExact(order_id) AS orders_reaching_step
+FROM analytics.orders_raw
+WHERE add_to_cart_order <= 10
+GROUP BY add_to_cart_order
+ORDER BY add_to_cart_order;
+
+-- Q24 | Sankey | Department to aisle item flow
+-- Business insight: Shows how item volume flows from broad departments into aisles.
+SELECT
+    department AS source,
+    aisle AS target,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY
+    department,
+    aisle
+ORDER BY total_items_sold DESC
+LIMIT 30;

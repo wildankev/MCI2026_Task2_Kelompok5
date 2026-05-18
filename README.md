@@ -1,213 +1,150 @@
-# 📦 Orders Data Pipeline
+# Orders Data Pipeline
 
-> Materi Pendamping Pelatihan Big Data Lab MCI 2026 · End-to-End Modern Data Stack Implementation
+Repositori ini berisi pipeline data end-to-end untuk mengambil data order dari API, memprosesnya dengan Spark, menyimpan hasilnya ke ClickHouse, lalu membuat dashboard analitik di Metabase.
 
-Proyek ini mengekstrak data order dari **Orders API**, memprosesnya dengan **Apache Spark**, mengorkestrasinya via **Apache Airflow**, menyimpannya ke **ClickHouse**, dan memvisualisasikannya di **Metabase**. Seluruh komponen dikemas dalam Docker Compose agar bisa dijalankan dengan alur yang sama seperti proyek referensi.
+Repository GitHub:
 
-Arsitektur mengadopsi prinsip dari *"Mining of Massive Datasets"* (MMDS) dengan pendekatan **batch pipeline** harian. Data dari API berbentuk JSON bertingkat, lalu diubah menjadi format tabular: satu baris merepresentasikan satu produk dalam satu order.
+```text
+https://github.com/wildankev/MCI2026_Task2_Kelompok5.git
+```
 
----
+Sumber data:
 
-## 🏗️ Arsitektur Sistem
+```text
+http://96.9.212.102:8000/orders
+```
+
+Data dari API berbentuk JSON bertingkat. Setiap order memiliki daftar produk di dalam field `products`. Pipeline ini mengubah data tersebut menjadi bentuk tabular, yaitu satu baris untuk satu produk dalam satu order. Bentuk ini lebih mudah dianalisis untuk kebutuhan visualisasi produk, user, reorder, department, aisle, dan ukuran cart.
+
+## Ringkasan Alur Pipeline
 
 ```text
 Orders API
-     ↓  (100 orders / request)
-[Ingestion — Python requests]
-     ↓  flatten orders -> products
-[Data Lake — folder lokal]
-     ↓  simpan .parquet / .csv
-[Processing — Apache Spark]
-     ↓  cleaning, deduplication, type casting
-[Data Warehouse — ClickHouse]
-     ↓  JDBC insert ke analytics.orders_raw
-[Dashboard — Metabase]
-
-↻  Seluruh siklus diatur oleh Apache Airflow
+  -> Airflow DAG
+  -> Python ingestion
+  -> Data lake raw
+  -> Spark cleaning
+  -> Data lake processed
+  -> ClickHouse analytics.orders_raw
+  -> Metabase dashboard
 ```
 
-**Metrik yang dianalisis:**
+Penjelasan singkat:
 
-- **Volume Order & User** — jumlah order unik, user unik, dan produk terjual
-- **Reorder Behavior** — seberapa sering produk dibeli ulang oleh user
-- **Basket Analysis** — rata-rata produk per order dan distribusi ukuran keranjang
-- **Product & Category Performance** — produk, aisle, dan department dengan penjualan tertinggi
-- **Shopping Pattern** — pola belanja berdasarkan hari, jam, urutan order, dan jarak dari order sebelumnya
+- `fetch_orders`: mengambil data dari API, melakukan flatten dari `orders -> products`, lalu menyimpan hasil awal ke data lake raw.
+- `process_orders`: membaca data raw dengan Spark, membersihkan data, membuang duplikat, lalu menyimpan hasil bersih ke data lake processed.
+- `load_to_clickhouse`: membaca data processed, membuat database/tabel jika belum ada, lalu memasukkan data ke ClickHouse.
 
----
-
-## 🛠️ Tech Stack
+## Teknologi yang Digunakan
 
 | Komponen | Teknologi |
-|----------|-----------|
-| Orchestration | Apache Airflow 2.9 |
-| Processing | Apache Spark / PySpark 3.5 |
-| Data Warehouse | ClickHouse (column-oriented OLAP) |
-| BI & Dashboard | Metabase |
-| Infrastructure | Docker & Docker Compose |
-| Language | Python 3.11 |
+| --- | --- |
+| Orkestrasi workflow | Apache Airflow |
+| Processing data | Apache Spark / PySpark |
+| Data warehouse | ClickHouse |
+| Dashboard | Metabase |
+| Container | Docker dan Docker Compose |
+| Bahasa pemrograman | Python |
 
----
-
-## 📂 Struktur Proyek
+## Struktur Repository
 
 ```text
-orders-data-pipeline/
-├── dags/
-│   ├── scripts/
-│   │   ├── fetch_orders_stream.py       # Ekstraksi API -> Data Lake
-│   │   └── process_orders_spark.py      # PySpark: cleaning & load ke ClickHouse
-│   └── orders_pipeline.py               # Definisi DAG Airflow
-├── screenshots/
-│   └── .gitkeep                         # Folder penyimpanan bukti screenshot
-├── sql/
-│   ├── ddl_clickhouse.sql               # DDL database dan tabel ClickHouse
-│   └── queries_metabase.sql             # Katalog query visualisasi Metabase
-├── docker-compose.yml                   # Konfigurasi seluruh service
-├── Dockerfile                           # Custom Airflow image (+ Java JRE)
-├── requirements.txt                     # Dependensi Python
-├── README.md                            # Dokumentasi proyek
-└── .gitignore
+MCI2026_Task2_Kelompok5/
+|-- dags/
+|   |-- orders_pipeline.py
+|   `-- scripts/
+|       |-- fetch_orders_stream.py
+|       `-- process_orders_spark.py
+|-- assets/
+|   `-- .gitkeep
+|-- sql/
+|   |-- ddl_clickhouse.sql
+|   `-- queries_metabase.sql
+|-- .gitignore
+|-- docker-compose.yml
+|-- Dockerfile
+|-- README.md
+`-- requirements.txt
 ```
 
----
+Keterangan folder dan file penting:
 
-## 🚀 Tutorial
+- `dags/orders_pipeline.py`: definisi DAG Airflow dengan urutan task pipeline.
+- `dags/scripts/fetch_orders_stream.py`: script untuk mengambil data dari API dan melakukan flatten.
+- `dags/scripts/process_orders_spark.py`: script Spark untuk cleaning dan load ke ClickHouse.
+- `sql/ddl_clickhouse.sql`: referensi DDL ClickHouse. File ini tidak wajib dijalankan manual karena tabel juga dibuat otomatis oleh pipeline.
+- `sql/queries_metabase.sql`: kumpulan query untuk membuat visualisasi di Metabase.
+- `assets/`: folder untuk menyimpan gambar pendukung README, seperti bukti Airflow, ClickHouse, visualisasi query, dan dashboard final.
 
-### Pastikan
+## Cara Menjalankan Project
 
-- [Docker Desktop](https://docs.docker.com/get-docker/) sudah terinstal
-- Menggunakan Git Bash, PowerShell, atau terminal lain yang mendukung Docker Compose
-- Port `8080`, `3000`, `8123`, dan `9000` belum dipakai service lain
-- Koneksi internet aktif untuk build image dan menarik dependency Spark JDBC
-
----
-
-### Step 1 — Buat Struktur Folder
-
-Membuat folder utama:
+### 1. Clone Repository
 
 ```bash
-mkdir orders-data-pipeline
-cd orders-data-pipeline
+git clone https://github.com/wildankev/MCI2026_Task2_Kelompok5.git
+cd MCI2026_Task2_Kelompok5
 ```
 
-Membuat folder untuk DAG, script, SQL, screenshot, dan data sementara:
+### 2. Build Image Docker
 
-```bash
-mkdir -p dags/scripts sql screenshots data_lake
-```
-
-Membuat file kosong untuk nanti:
-
-```bash
-touch docker-compose.yml Dockerfile requirements.txt .gitignore README.md
-touch dags/orders_pipeline.py
-touch dags/scripts/fetch_orders_stream.py
-touch dags/scripts/process_orders_spark.py
-touch sql/ddl_clickhouse.sql
-touch sql/queries_metabase.sql
-touch screenshots/.gitkeep
-```
-
-> `dags/` → dibaca otomatis oleh Airflow untuk mendefinisikan jadwal dan alur kerja  
-> `dags/scripts/` → logika utama kode ingestion dan processing  
-> `data_lake/` → penyimpanan sementara file hasil ingest  
-> `sql/` → DDL ClickHouse dan query dashboard Metabase  
-> `screenshots/` → tempat menyimpan bukti visual Airflow, ClickHouse, dan Metabase
-
----
-
-### Step 2 — Isi File Konfigurasi & Kode
-
-Isi masing-masing file dengan mengcopas code dari repo ini:
-
-| File | Fungsi |
-|------|--------|
-| `requirements.txt` | Library Python yang diinstal otomatis (`requests`, `pandas`, `pyspark`, `pyarrow`, `clickhouse-driver`) |
-| `Dockerfile` | Instruksi merakit container Airflow + Java JRE untuk Spark |
-| `docker-compose.yml` | Mengatur Postgres, Airflow, ClickHouse, dan Metabase dalam satu environment |
-| `fetch_orders_stream.py` | Tarik data dari Orders API, flatten `orders -> products`, lalu simpan ke Data Lake |
-| `process_orders_spark.py` | Baca staged file, cleaning, deduplication, dan load ke ClickHouse via JDBC |
-| `orders_pipeline.py` | DAG Airflow: jadwal dan urutan task |
-| `ddl_clickhouse.sql` | DDL database `analytics`, tabel `orders_raw`, dan view `orders` |
-| `queries_metabase.sql` | Katalog 20 query analitik untuk visualisasi Metabase |
-
-> ⚠️ **Perhatikan**  
-> Endpoint default yang digunakan adalah `http://96.9.212.102:8000/orders`. Jika endpoint berubah, ubah environment variable `ORDERS_API_URL`.
-
----
-
-### Step 3 — Jalankan Docker
-
-Build image. Jangan lupa buka Docker Desktop terlebih dahulu.
+Pastikan Docker Desktop sudah berjalan, lalu jalankan:
 
 ```bash
 docker-compose build
 ```
 
-Inisialisasi database Airflow dan user admin:
+Perintah ini membuat image Airflow sesuai `Dockerfile` dan menginstal package dari `requirements.txt`.
+
+### 3. Inisialisasi Airflow
 
 ```bash
 docker-compose up airflow-init
 ```
 
-Jalankan seluruh pipeline service:
+Tahap ini menyiapkan database metadata Airflow dan membuat user admin.
 
+Login Airflow:
+
+```text
+username: admin
+password: admin
+```
+
+### 4. Jalankan Semua Service
 ```bash
 docker-compose up -d
 ```
 
-> Tunggu 1-2 menit lalu buka **http://localhost:8080**
+Service yang akan berjalan:
 
----
+| Service | URL / Port |
+| --- | --- |
+| Airflow | http://localhost:8080 |
+| Metabase | http://localhost:3000 |
+| ClickHouse HTTP | http://localhost:8123 |
+| ClickHouse TCP | localhost:9000 |
 
-### Step 4 — Aktifkan Pipeline di Airflow
+### 5. Trigger Pipeline di Airflow
 
-1. Buka **http://localhost:8080** → login `admin` / `admin`
-2. Temukan DAG **`orders_pipeline`**, geser sakelar untuk mengaktifkan
-3. Klik ▶️ **Trigger DAG** untuk memaksanya jalan sekarang
+1. Buka `http://localhost:8080`.
+2. Login dengan user `admin` dan password `admin`.
+3. Cari DAG bernama `orders_pipeline`.
+4. Aktifkan DAG.
+5. Klik tombol trigger untuk menjalankan pipeline.
 
-**Yang terjadi di balik layar:**
+Urutan task yang diharapkan:
 
 ```text
-[Trigger]
-    ↓
-[Task 1: fetch_orders]
-    → Orders API → flatten orders/products → simpan staged file ✅
-    ↓
-[Task 2: process_orders]
-    → Spark baca staged file → cleaning → deduplication → simpan processed parquet ✅
-    ↓
-[Task 3: load_to_clickhouse]
-    → Spark baca processed parquet → JDBC insert ke ClickHouse → cleanup staging ✅
-    ↓
-[Menunggu schedule harian berikutnya...]
+fetch_orders -> process_orders -> load_to_clickhouse
 ```
 
-Gambar berikut dapat digunakan untuk menunjukkan bahwa file staging sudah terbentuk di folder Data Lake setelah task `fetch_orders` berjalan. Ini menjadi bukti bahwa data order berhasil diambil dari API dan disimpan sebelum diproses Spark.
+Jika semua task berhasil, status task di Airflow akan berwarna hijau.
 
-📸 [Tambahkan screenshot di sini — simpan file PNG ke folder `screenshots/` dan referensikan dengan: `![nama](screenshots/nama.png)`]
+![airflow_graph](assets/airflow_graph.png)
 
-![orders-data-lake-file](screenshots/orders-data-lake-file.png)
+## Validasi Data di ClickHouse
 
-Gambar berikut dapat digunakan untuk menampilkan tab Graph Airflow. Graph harus menunjukkan tiga task yang saling terhubung: `fetch_orders`, `process_orders`, dan `load_to_clickhouse`. Ketika semua kotak berwarna hijau, artinya dependency antar-task berjalan sukses dari awal sampai akhir.
-
-![airflow-dag-graph](screenshots/airflow-dag-graph.png)
-
-Gambar berikut dapat digunakan untuk menampilkan Grid atau DAG Runs Summary. Bagian ini menunjukkan jumlah run yang berhasil, durasi eksekusi, dan status setiap task.
-
-![airflow-dag-summary](screenshots/airflow-dag-summary.png)
-
-Gambar berikut dapat digunakan untuk menampilkan log task `fetch_orders`. Log yang baik akan menunjukkan pesan pengambilan API dan jumlah baris produk yang berhasil disimpan ke staging.
-
-![airflow-fetch-log](screenshots/airflow-fetch-log.png)
-
----
-
-### Step 5 — Validasi Data di ClickHouse
-
-Masuk ke database ClickHouse:
+Masuk ke ClickHouse client:
 
 ```bash
 docker-compose exec clickhouse-server clickhouse-client \
@@ -215,17 +152,22 @@ docker-compose exec clickhouse-server clickhouse-client \
   --password rahasia
 ```
 
-Masuki database dan jalankan query untuk melihat data:
+Cek database dan tabel:
 
 ```sql
 SHOW DATABASES;
-USE analytics;
-
+SHOW TABLES FROM analytics;
 DESCRIBE analytics.orders_raw;
-SELECT COUNT(*) FROM analytics.orders_raw;
 ```
 
-Melihat 10 baris order-product terbaru:
+Cek jumlah data:
+
+```sql
+SELECT count()
+FROM analytics.orders_raw;
+```
+
+Cek contoh isi data:
 
 ```sql
 SELECT
@@ -241,45 +183,24 @@ ORDER BY ingested_at DESC
 LIMIT 10;
 ```
 
-Melihat produk yang paling sering dibeli:
+![clickhouse](assets/clickhouse.png)
 
-```sql
-SELECT
-    product_name,
-    COUNT(*) AS total_items_sold
-FROM analytics.orders_raw
-GROUP BY product_name
-ORDER BY total_items_sold DESC
-LIMIT 10;
+## Data Lake: Raw dan Processed
+
+Pipeline ini memakai dua area staging di data lake:
+
+```text
+data_lake/orders/raw
+data_lake/orders/processed
 ```
 
-Melihat produk dengan reorder rate tertinggi:
+`raw` berisi data hasil pengambilan dari API setelah struktur JSON di-flatten. Data ini belum dibersihkan oleh Spark.
 
-```sql
-SELECT
-    product_name,
-    COUNT(*) AS total_items_sold,
-    ROUND(SUM(reordered) / COUNT(*) * 100, 2) AS reorder_rate_pct
-FROM analytics.orders_raw
-GROUP BY product_id, product_name
-HAVING total_items_sold >= 5
-ORDER BY reorder_rate_pct DESC, total_items_sold DESC
-LIMIT 10;
-```
+`processed` berisi data yang sudah dibaca dan diproses Spark. Pada tahap ini pipeline melakukan casting tipe data, membuang data dengan key penting yang null, menghapus duplikat, dan menambahkan timestamp ingestion.
 
-Keluar dari ClickHouse:
+Dua tahap ini dibuat agar pipeline lebih mudah dicek. Jika proses load ke ClickHouse gagal, data yang sudah bersih masih bisa diperiksa di folder `processed` tanpa harus mengambil ulang dari API.
 
-```sql
-exit
-```
-
-📸 [Tambahkan screenshot di sini — simpan file PNG ke folder `screenshots/` dan referensikan dengan: `![nama](screenshots/nama.png)`]
-
-![clickhouse-table-verification](screenshots/clickhouse-table-verification.png)
-
----
-
-## Database & Schema
+## Schema ClickHouse
 
 Database yang digunakan:
 
@@ -287,182 +208,716 @@ Database yang digunakan:
 CREATE DATABASE IF NOT EXISTS analytics;
 ```
 
-### `analytics.orders_raw`
+Tabel utama:
 
-Tabel utama dengan engine `MergeTree()` dan `ORDER BY (order_id, product_id)`.
+```text
+analytics.orders_raw
+```
 
-| Kolom | Tipe ClickHouse | Keterangan |
+View untuk konsumsi BI:
+
+```text
+analytics.orders
+```
+
+Kolom pada `analytics.orders_raw`:
+
+| Kolom | Tipe | Keterangan |
 | --- | --- | --- |
-| `order_id` | `UInt32` | ID unik order |
-| `user_id` | `UInt32` | ID user yang melakukan order |
+| `order_id` | `UInt32` | ID order |
+| `user_id` | `UInt32` | ID user |
 | `order_number` | `UInt16` | Urutan order milik user |
-| `order_dow` | `UInt8` | Hari order, 0=Minggu sampai 6=Sabtu |
+| `order_dow` | `UInt8` | Hari order, 0 sampai 6 |
 | `order_hour_of_day` | `UInt8` | Jam order, 0 sampai 23 |
 | `days_since_prior_order` | `Nullable(UInt16)` | Jarak hari dari order sebelumnya |
-| `eval_set` | `String` | Label dataset, misalnya `prior` |
+| `eval_set` | `String` | Label data order |
 | `product_id` | `UInt32` | ID produk |
 | `product_name` | `String` | Nama produk |
 | `aisle_id` | `UInt16` | ID aisle |
 | `aisle` | `String` | Nama aisle |
 | `department_id` | `UInt16` | ID department |
 | `department` | `String` | Nama department |
-| `add_to_cart_order` | `UInt16` | Urutan produk masuk keranjang |
-| `reordered` | `UInt8` | Flag reorder, 0 atau 1 |
-| `ingested_at` | `DateTime` | Timestamp saat data dimuat |
+| `add_to_cart_order` | `UInt16` | Urutan produk dimasukkan ke cart |
+| `reordered` | `UInt8` | Status reorder, 0 atau 1 |
+| `ingested_at` | `DateTime` | Waktu data dimuat |
 
-### `analytics.orders`
+## Setup Metabase
 
-View bersih untuk kebutuhan BI. View ini membaca dari `analytics.orders_raw` dan hanya mengambil baris dengan key valid seperti `order_id`, `user_id`, `product_id`, dan `product_name`.
+1. Buka `http://localhost:3000`.
+2. Lakukan setup awal akun Metabase.
+3. Tambahkan koneksi database ClickHouse.
 
----
-
-### Step 6 — Visualisasi di Metabase
-
-1. Buka **http://localhost:3000**, isi data diri untuk setup awal Metabase
-2. Di halaman **Add your data**, pilih ClickHouse lalu isi koneksi berikut:
+Konfigurasi koneksi:
 
 | Field | Value |
-|-------|-------|
+| --- | --- |
 | Database type | ClickHouse |
 | Display name | Data Warehouse Orders |
 | Host | `clickhouse-server` |
 | Port | `8123` |
-| Database name | `analytics` |
 | Username | `admin` |
 | Password | `rahasia` |
 
-3. Klik **+ New → SQL Query**
-4. Pilih database **Data Warehouse Orders**
-5. Salin query dari `sql/queries_metabase.sql`
-6. Klik **Visualize**, pilih chart sesuai kebutuhan, lalu simpan ke dashboard
+Setelah koneksi berhasil:
 
-📸 [Tambahkan screenshot di sini — simpan file PNG ke folder `screenshots/` dan referensikan dengan: `![nama](screenshots/nama.png)`]
+1. Klik `+ New`.
+2. Pilih `Question`.
+3. Pilih database `Data Warehouse Orders`.
+4. Klik `Visualize`.
+5. Pilih tipe visualisasi.
 
-### Katalog Query Metabase
+![dashboard](assets/dashboard.png)
 
-| No | Chart Type | Insight |
-| --- | --- | --- |
-| Q01 | KPI / Number Card | Total unique orders |
-| Q02 | KPI / Number Card | Total unique users |
-| Q03 | KPI / Number Card | Total products sold |
-| Q04 | KPI / Number Card | Overall reorder rate (%) |
-| Q05 | KPI / Number Card | Average products per order |
-| Q06 | Bar Chart | Top 10 most ordered products |
-| Q07 | Bar Chart | Top 10 departments by total items sold |
-| Q08 | Bar Chart | Top 10 aisles by total items sold |
-| Q09 | Bar Chart | Top 10 products with highest reorder rate |
-| Q10 | Distribution Chart | Order count by day of week |
-| Q11 | Distribution Chart | Order count by hour of day |
-| Q12 | Distribution Chart | Distribution of order size |
-| Q13 | Scatter / Bubble | Per-product total orders vs reorder rate |
-| Q14 | Scatter / Bubble | Per-user order frequency vs average order size |
-| Q15 | Time / Trend | Order volume trend by days since prior order |
-| Q16 | Time / Trend | Reorder rate trend across order number |
-| Q17 | Pivot / Cohort | Reorder rate by department and day of week |
-| Q18 | Pivot / Cohort | Average cart size by hour and day of week |
-| Q19 | Funnel / Table | Product table with reorder percentage and department rank |
-| Q20 | Funnel / Table | Top 20 users by total orders placed |
+## Katalog Query dan Insight Metabase
 
-Placeholder screenshot chart Metabase:
+Bagian ini menjelaskan semua query yang digunakan untuk dashboard. Setiap query berisi nama visualisasi, tujuan analisis, SQL yang dijalankan, dan placeholder gambar.
 
-![q01-total-unique-orders](screenshots/q01-total-unique-orders.png)
+Untuk menjalankannya:
+1. Klik `+ New`.
+2. Pilih `SQL Query`.
+3. Pilih database `Data Warehouse Orders`.
+4. Copy query dari bagian katalog di bawah atau dari file `sql/queries_metabase.sql`.
+5. Klik `Visualize`.
+6. Pilih tipe visualisasi sesuai rekomendasi.
+7. Simpan setiap chart ke dashboard utama.
+### Q01 - Total Unique Orders
 
-![q02-total-unique-users](screenshots/q02-total-unique-users.png)
+Tipe visualisasi: `Number`
 
-![q03-total-products-sold](screenshots/q03-total-products-sold.png)
+Tujuan dan insight:
 
-![q04-overall-reorder-rate](screenshots/q04-overall-reorder-rate.png)
+Query ini menghitung jumlah order unik yang berhasil masuk ke warehouse. Angka ini menjadi KPI utama untuk memastikan volume order yang dianalisis tidak dihitung berulang akibat struktur data per produk. Jika jumlah ini bertambah setelah pipeline dijalankan ulang, berarti data order baru berhasil masuk ke ClickHouse.
 
-![q05-average-products-per-order](screenshots/q05-average-products-per-order.png)
+SQL:
 
-![q06-top-products](screenshots/q06-top-products.png)
+```sql
+SELECT
+    uniqExact(order_id) AS total_unique_orders
+FROM analytics.orders_raw;
+```
 
-![q07-top-departments](screenshots/q07-top-departments.png)
+![q01](assets/q01.png)
 
-![q08-top-aisles](screenshots/q08-top-aisles.png)
+### Q02 - Total Unique Users
 
-![q09-highest-reorder-products](screenshots/q09-highest-reorder-products.png)
+Tipe visualisasi: `Number`
 
-![q10-orders-by-day](screenshots/q10-orders-by-day.png)
+Tujuan dan insight:
 
-![q11-orders-by-hour](screenshots/q11-orders-by-hour.png)
+Query ini menghitung jumlah user unik yang muncul dalam data order. KPI ini menunjukkan seberapa besar cakupan customer pada data yang dianalisis. Nilainya bisa dibandingkan dengan total order untuk melihat apakah transaksi berasal dari banyak user atau hanya dari sedikit user yang aktif.
 
-![q12-order-size-distribution](screenshots/q12-order-size-distribution.png)
+SQL:
 
-![q13-product-reorder-bubble](screenshots/q13-product-reorder-bubble.png)
+```sql
+SELECT
+    uniqExact(user_id) AS total_unique_users
+FROM analytics.orders_raw;
+```
 
-![q14-user-frequency-scatter](screenshots/q14-user-frequency-scatter.png)
+![q02](assets/q02.png)
 
-![q15-days-since-prior-trend](screenshots/q15-days-since-prior-trend.png)
+### Q03 - Total Products Sold
 
-![q16-loyalty-curve](screenshots/q16-loyalty-curve.png)
+Tipe visualisasi: `Number`
 
-![q17-department-day-pivot](screenshots/q17-department-day-pivot.png)
+Tujuan dan insight:
 
-![q18-cart-size-hour-day](screenshots/q18-cart-size-hour-day.png)
+Karena satu baris mewakili satu produk dalam satu order, `count()` pada tabel ini merepresentasikan total item yang terjual. KPI ini berguna untuk membaca volume transaksi dari sisi produk, bukan hanya dari sisi jumlah order.
 
-![q19-product-rank-table](screenshots/q19-product-rank-table.png)
+SQL:
 
-![q20-top-users-table](screenshots/q20-top-users-table.png)
+```sql
+SELECT
+    count() AS total_products_sold
+FROM analytics.orders_raw;
+```
 
-Placeholder dashboard akhir:
+![q03](assets/q03.png)
 
-![final-metabase-dashboard](screenshots/final-metabase-dashboard.png)
+### Q04 - Overall Reorder Rate
 
----
+Tipe visualisasi: `Gauge`
 
-### Step 7 — Matikan Infrastruktur
+Tujuan dan insight:
+
+Query ini menghitung persentase item yang merupakan pembelian ulang. Nilai reorder rate membantu melihat seberapa kuat pola repeat purchase pada data. Semakin tinggi nilainya, semakin banyak item yang sudah pernah dibeli user sebelumnya.
+
+SQL:
+
+```sql
+SELECT
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw;
+```
+
+![q04](assets/q04.png)
+
+### Q05 - Average Products per Order
+
+Tipe visualisasi: `Progress`
+
+Tujuan dan insight:
+
+Query ini mengukur rata-rata jumlah produk dalam satu order. Metrik ini menggambarkan ukuran keranjang belanja. Jika nilainya tinggi, berarti customer cenderung membeli banyak item dalam satu transaksi.
+
+SQL:
+
+```sql
+SELECT
+    round(count() / uniqExact(order_id), 2) AS avg_products_per_order
+FROM analytics.orders_raw;
+```
+
+![q05](assets/q05.png)
+
+### Q06 - Top 10 Most Ordered Products
+
+Tipe visualisasi: `Bar`
+
+Tujuan dan insight:
+
+Query ini menampilkan sepuluh produk dengan frekuensi pembelian tertinggi. Visualisasi ini membantu menemukan produk paling populer dan produk yang berkontribusi besar terhadap volume transaksi.
+
+SQL:
+
+```sql
+SELECT
+    product_name,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY
+    product_id,
+    product_name
+ORDER BY total_items_sold DESC
+LIMIT 10;
+```
+
+![q06](assets/q06.png)
+
+### Q07 - Top 10 Products by Reorder Rate
+
+Tipe visualisasi: `Row`
+
+Tujuan dan insight:
+
+Query ini menampilkan produk dengan reorder rate tertinggi, tetapi hanya untuk produk yang muncul minimal lima kali. Filter tersebut digunakan agar produk yang hanya muncul sekali tidak langsung terlihat sempurna karena reorder rate 100 persen. Insight utamanya adalah menemukan produk yang bukan hanya sering dibeli, tetapi juga cenderung dibeli ulang.
+
+SQL:
+
+```sql
+SELECT
+    product_name,
+    count() AS total_items_sold,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY
+    product_id,
+    product_name
+HAVING total_items_sold >= 5
+ORDER BY reorder_rate_pct DESC, total_items_sold DESC
+LIMIT 10;
+```
+
+![q07](assets/q07.png)
+
+### Q08 - Top 10 Departments by Total Items Sold
+
+Tipe visualisasi: `Bar`
+
+Tujuan dan insight:
+
+Query ini melihat department mana yang menyumbang item terjual paling banyak. Hasilnya berguna untuk memahami kategori besar yang paling dominan dalam basket customer.
+
+SQL:
+
+```sql
+SELECT
+    department,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC
+LIMIT 10;
+```
+
+![q08](assets/q08.png)
+
+### Q09 - Top 10 Aisles by Total Items Sold
+
+Tipe visualisasi: `Row`
+
+Tujuan dan insight:
+
+Query ini menampilkan aisle dengan volume item terbesar. Dibanding department, aisle memberi detail kategori yang lebih spesifik, sehingga lebih mudah melihat area produk mana yang paling sering muncul dalam order.
+
+SQL:
+
+```sql
+SELECT
+    aisle,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY aisle
+ORDER BY total_items_sold DESC
+LIMIT 10;
+```
+![q09](assets/q09.png)
+
+### Q10 - Department Share of Item Sales
+
+Tipe visualisasi: `Pie`
+
+Tujuan dan insight:
+
+Query ini menunjukkan proporsi kontribusi setiap department terhadap total item sold. Pie chart cocok untuk melihat komposisi kategori secara cepat, terutama department mana yang paling besar porsinya dibanding kategori lain.
+
+SQL:
+
+```sql
+SELECT
+    department,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+```
+![q10](assets/q10.png)
+
+### Q11 - Order Count by Hour of Day
+
+Tipe visualisasi: `Line`
+
+Tujuan dan insight:
+
+Query ini menghitung jumlah order berdasarkan jam dalam sehari. Visualisasi line membantu melihat jam dengan aktivitas order paling tinggi. Insight ini dapat digunakan untuk memahami pola waktu belanja customer.
+
+SQL:
+
+```sql
+SELECT
+    order_hour_of_day AS hour_of_day,
+    uniqExact(order_id) AS total_orders
+FROM analytics.orders_raw
+GROUP BY order_hour_of_day
+ORDER BY order_hour_of_day;
+```
+![q11](assets/q11.png)
+
+### Q12 - Order Count by Day of Week
+
+Tipe visualisasi: `Bar`
+
+Tujuan dan insight:
+
+Query ini menampilkan jumlah order untuk setiap hari dalam seminggu. Field `order_dow` dipetakan menjadi label hari agar lebih mudah dibaca. Chart ini menunjukkan hari mana yang memiliki volume order paling tinggi.
+
+SQL:
+
+```sql
+SELECT
+    order_dow,
+    arrayElement(
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        order_dow + 1
+    ) AS day_name,
+    uniqExact(order_id) AS total_orders
+FROM analytics.orders_raw
+GROUP BY order_dow
+ORDER BY order_dow;
+```
+
+![q12](assets/q12.png)
+
+### Q13 - Order Size Distribution
+
+Tipe visualisasi: `Area`
+
+Tujuan dan insight:
+
+Query ini mengelompokkan ukuran order berdasarkan jumlah produk dalam cart. Bucket seperti `1-5`, `6-10`, dan seterusnya membantu melihat apakah sebagian besar customer melakukan pembelian kecil atau besar.
+
+SQL:
+
+```sql
+WITH order_sizes AS (
+    SELECT
+        order_id,
+        count() AS product_count
+    FROM analytics.orders_raw
+    GROUP BY order_id
+),
+bucketed AS (
+    SELECT
+        intDiv(product_count - 1, 5) * 5 + 1 AS bucket_start
+    FROM order_sizes
+)
+SELECT
+    concat(
+        toString(bucket_start),
+        '-',
+        toString(bucket_start + 4)
+    ) AS cart_size_bucket,
+    count() AS total_orders
+FROM bucketed
+GROUP BY bucket_start
+ORDER BY bucket_start;
+```
+
+![q13](assets/q13.png)
+
+### Q14 - Product Volume Versus Reorder Rate
+
+Tipe visualisasi: `Scatter`
+
+Tujuan dan insight:
+
+Query ini membandingkan total order produk dengan reorder rate. Scatter plot membantu membedakan produk yang populer karena volumenya tinggi dan produk yang kuat karena sering dibeli ulang. Produk ideal biasanya berada pada area volume tinggi dan reorder rate tinggi.
+
+SQL:
+
+```sql
+SELECT
+    product_name,
+    uniqExact(order_id) AS total_orders,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY
+    product_id,
+    product_name
+HAVING total_items_sold >= 3
+ORDER BY total_orders DESC;
+```
+
+![q14](assets/q14.png)
+
+### Q15 - User Order Frequency Versus Average Basket Size
+
+Tipe visualisasi: `Scatter`
+
+Tujuan dan insight:
+
+Query ini membandingkan frekuensi order user dengan rata-rata ukuran cart. Chart ini membantu melihat user yang sering order dan sekaligus memiliki basket besar. User seperti ini dapat dianggap sebagai customer bernilai tinggi.
+
+SQL:
+
+```sql
+WITH user_order_sizes AS (
+    SELECT
+        user_id,
+        order_id,
+        count() AS products_in_order
+    FROM analytics.orders_raw
+    GROUP BY
+        user_id,
+        order_id
+)
+SELECT
+    user_id,
+    count() AS order_frequency,
+    round(avg(products_in_order), 2) AS avg_order_size
+FROM user_order_sizes
+GROUP BY user_id
+ORDER BY order_frequency DESC, avg_order_size DESC;
+```
+![q15](assets/q15.png)
+
+### Q16 - Reorder Rate Across Order Number
+
+Tipe visualisasi: `Line`
+
+Tujuan dan insight:
+
+Query ini menunjukkan perubahan reorder rate berdasarkan urutan order customer. Visualisasi yang paling cocok adalah line chart, karena `order_number` adalah urutan transaksi, bukan kolom tanggal. Jika reorder rate naik pada order ke sekian, berarti semakin lama customer bertransaksi, semakin besar kemungkinan mereka membeli produk yang pernah dibeli sebelumnya.
+
+SQL:
+
+```sql
+SELECT
+    order_number,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY order_number
+ORDER BY order_number;
+```
+![q16](assets/q16.png)
+
+### Q17 - Order Volume by Days Since Prior Order
+
+Tipe visualisasi: `Line`
+
+Tujuan dan insight:
+
+Query ini melihat distribusi jarak hari sejak order sebelumnya. Insight ini menunjukkan interval waktu yang paling sering muncul sebelum customer melakukan order lagi.
+
+SQL:
+
+```sql
+SELECT
+    days_since_prior_order,
+    uniqExact(order_id) AS total_orders
+FROM analytics.orders_raw
+WHERE days_since_prior_order IS NOT NULL
+GROUP BY days_since_prior_order
+ORDER BY days_since_prior_order;
+```
+![q17](assets/q17.png)
+
+### Q18 - Order Count and Average Cart Size by Day of Week
+
+Tipe visualisasi: `Combo`
+
+Tujuan dan insight:
+
+Query ini menggabungkan dua metrik dalam satu visualisasi: jumlah order dan rata-rata ukuran cart per hari. Dengan combo chart, kita bisa melihat apakah hari dengan order tinggi juga memiliki cart size yang besar.
+
+SQL:
+
+```sql
+WITH order_sizes AS (
+    SELECT
+        order_id,
+        any(order_dow) AS order_dow,
+        count() AS cart_size
+    FROM analytics.orders_raw
+    GROUP BY order_id
+)
+SELECT
+    order_dow,
+    arrayElement(
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        order_dow + 1
+    ) AS day_name,
+    uniqExact(order_id) AS total_orders,
+    round(avg(cart_size), 2) AS avg_cart_size
+FROM order_sizes
+GROUP BY order_dow
+ORDER BY order_dow;
+```
+![q18](assets/q18.png)
+
+### Q19 - Department Contribution to Total Item Sales
+
+Tipe visualisasi: `Waterfall`
+
+Tujuan dan insight:
+
+Query ini menampilkan kontribusi department terhadap total item sold. Waterfall dapat digunakan untuk memperlihatkan department mana yang paling besar menambah volume item pada keseluruhan transaksi.
+
+SQL:
+
+```sql
+SELECT
+    department,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC
+LIMIT 12;
+```
+![q19](assets/q19.png)
+
+### Q20 - Reorder Rate by Department and Day of Week
+
+Tipe visualisasi: `Table`
+
+Tujuan dan insight:
+
+Query ini menampilkan reorder rate setiap department untuk masing-masing hari. Sebelumnya visualisasi ini diarahkan ke `Pivot Table`, tetapi Metabase hanya mendukung pivot table untuk question yang dibuat lewat query builder, bukan native SQL. Karena itu query ini dibuat sebagai pivot manual di SQL dan divisualisasikan sebagai `Table`. Insight yang dicari adalah department mana yang memiliki pola reorder kuat pada hari tertentu.
+
+SQL:
+
+```sql
+SELECT
+    department,
+    if(
+        countIf(order_dow = 0) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 0) / countIf(order_dow = 0) * 100, 2)
+    ) AS sun_reorder_rate_pct,
+    if(
+        countIf(order_dow = 1) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 1) / countIf(order_dow = 1) * 100, 2)
+    ) AS mon_reorder_rate_pct,
+    if(
+        countIf(order_dow = 2) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 2) / countIf(order_dow = 2) * 100, 2)
+    ) AS tue_reorder_rate_pct,
+    if(
+        countIf(order_dow = 3) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 3) / countIf(order_dow = 3) * 100, 2)
+    ) AS wed_reorder_rate_pct,
+    if(
+        countIf(order_dow = 4) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 4) / countIf(order_dow = 4) * 100, 2)
+    ) AS thu_reorder_rate_pct,
+    if(
+        countIf(order_dow = 5) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 5) / countIf(order_dow = 5) * 100, 2)
+    ) AS fri_reorder_rate_pct,
+    if(
+        countIf(order_dow = 6) = 0,
+        NULL,
+        round(sumIf(reordered, order_dow = 6) / countIf(order_dow = 6) * 100, 2)
+    ) AS sat_reorder_rate_pct,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+```
+![q20](assets/q20.png)
+
+### Q21 - Product Performance Table with Rank Inside Department
+
+Tipe visualisasi: `Table`
+
+Tujuan dan insight:
+
+Query ini membuat tabel performa produk lengkap dengan ranking di dalam department masing-masing. Tabel ini membantu membaca produk terbaik per department, baik dari sisi total item sold, unique order, maupun reorder rate.
+
+SQL:
+
+```sql
+WITH product_metrics AS (
+    SELECT
+        department,
+        product_id,
+        product_name,
+        count() AS total_items_sold,
+        uniqExact(order_id) AS unique_orders,
+        round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+    FROM analytics.orders_raw
+    GROUP BY
+        department,
+        product_id,
+        product_name
+)
+SELECT
+    department,
+    product_name,
+    total_items_sold,
+    unique_orders,
+    reorder_rate_pct,
+    rank() OVER (
+        PARTITION BY department
+        ORDER BY total_items_sold DESC
+    ) AS rank_within_department
+FROM product_metrics
+ORDER BY
+    department,
+    rank_within_department;
+```
+![q21](assets/q21.png)
+
+### Q22 - Top 20 Users by Order Activity
+
+Tipe visualisasi: `Table`
+
+Tujuan dan insight:
+
+Query ini menampilkan user paling aktif berdasarkan jumlah order. Selain itu, query juga menampilkan total item yang dibeli dan rata-rata produk per order. Tabel ini membantu mengidentifikasi user dengan aktivitas belanja tinggi.
+
+SQL:
+
+```sql
+SELECT
+    user_id,
+    uniqExact(order_id) AS total_orders,
+    count() AS total_items_bought,
+    round(count() / uniqExact(order_id), 2) AS avg_products_per_order
+FROM analytics.orders_raw
+GROUP BY user_id
+ORDER BY total_orders DESC, total_items_bought DESC
+LIMIT 20;
+```
+![q22](assets/q22.png)
+
+### Q23 - Cart Position Retention
+
+Tipe visualisasi: `Funnel`
+
+Tujuan dan insight:
+
+Query ini melihat berapa banyak order yang mencapai posisi cart tertentu, dari item pertama sampai item kesepuluh. Funnel membantu menunjukkan penurunan jumlah order saat posisi item semakin jauh. Semakin tinggi step yang masih banyak terisi, semakin besar ukuran cart customer.
+
+SQL:
+
+```sql
+SELECT
+    concat('Item ', toString(add_to_cart_order)) AS cart_step,
+    uniqExact(order_id) AS orders_reaching_step
+FROM analytics.orders_raw
+WHERE add_to_cart_order <= 10
+GROUP BY add_to_cart_order
+ORDER BY add_to_cart_order;
+```
+![q23](assets/q23.png)
+
+### Q24 - Department to Aisle Item Flow
+
+Tipe visualisasi: `Sankey`
+
+Tujuan dan insight:
+
+Query ini menampilkan aliran item dari department menuju aisle. Sankey cocok untuk melihat bagaimana volume item dari kategori besar tersebar ke kategori yang lebih spesifik. Insight ini berguna untuk membaca struktur kontribusi department dan aisle dalam satu visual.
+
+SQL:
+
+```sql
+SELECT
+    department AS source,
+    aisle AS target,
+    count() AS total_items_sold
+FROM analytics.orders_raw
+GROUP BY
+    department,
+    aisle
+ORDER BY total_items_sold DESC
+LIMIT 30;
+```
+
+![q24](assets/q24.png)
+
+## Menghentikan Service
+
+Untuk menghentikan container tanpa menghapus volume:
 
 ```bash
 docker-compose down
 ```
 
-Jika ingin menghapus volume dan memulai ulang dari nol:
+Jika ingin menghapus volume dan mengulang setup dari awal:
 
 ```bash
 docker-compose down -v
 ```
 
----
-
-## ⚙️ Konfigurasi
-
-Environment variable yang dapat digunakan oleh script:
+## Konfigurasi Environment
 
 | Variable | Default | Keterangan |
 | --- | --- | --- |
 | `ORDERS_API_URL` | `http://96.9.212.102:8000/orders` | Endpoint sumber data orders |
-| `ORDERS_RAW_PATH` | `/opt/airflow/data_lake/orders/raw` | Lokasi staging raw Parquet/CSV |
-| `ORDERS_OUTPUT_FORMAT` | `parquet` | Format staging, dapat memakai `parquet` atau `csv` |
-| `ORDERS_PROCESSED_PATH` | `/opt/airflow/data_lake/orders/processed/cleaned_orders` | Lokasi hasil proses Spark |
-| `CLICKHOUSE_HOST` | `clickhouse-server` | Host ClickHouse di jaringan Docker |
-| `CLICKHOUSE_NATIVE_PORT` | `9000` | Port native ClickHouse untuk DDL |
+| `ORDERS_RAW_PATH` | `/opt/airflow/data_lake/orders/raw` | Lokasi staging raw |
+| `ORDERS_OUTPUT_FORMAT` | `parquet` | Format file staging |
+| `ORDERS_PROCESSED_PATH` | `/opt/airflow/data_lake/orders/processed/cleaned_orders` | Lokasi staging processed |
+| `CLICKHOUSE_HOST` | `clickhouse-server` | Host ClickHouse dalam Docker network |
+| `CLICKHOUSE_NATIVE_PORT` | `9000` | Port native ClickHouse |
 | `CLICKHOUSE_HTTP_PORT` | `8123` | Port HTTP/JDBC ClickHouse |
 | `CLICKHOUSE_USER` | `admin` | User ClickHouse |
 | `CLICKHOUSE_PASSWORD` | `rahasia` | Password ClickHouse |
 | `CLICKHOUSE_DATABASE` | `analytics` | Database target |
-| `CLICKHOUSE_TABLE` | `orders_raw` | Tabel target untuk insert |
-| `CLICKHOUSE_JDBC_PACKAGE` | `ru.yandex.clickhouse:clickhouse-jdbc:0.3.2` | Driver JDBC untuk Spark |
-
----
-
-## 🔐 Layanan
-
-| Layanan | URL | Username | Password |
-|---------|-----|----------|----------|
-| Apache Airflow | http://localhost:8080 | `admin` | `admin` |
-| Metabase | http://localhost:3000 | *(buat saat setup)* | — |
-| ClickHouse HTTP | http://localhost:8123 | `admin` | `rahasia` |
-| ClickHouse TCP | `localhost:9000` | `admin` | `rahasia` |
-
----
+| `CLICKHOUSE_TABLE` | `orders_raw` | Tabel target |
+| `CLICKHOUSE_JDBC_PACKAGE` | `ru.yandex.clickhouse:clickhouse-jdbc:0.3.2` | Dependency JDBC Spark |
 
 ## Anggota Kelompok
 
 [isi sesuai kelompok]
 
----
-
 ## Lisensi
 
-Proyek ini dibuat untuk kebutuhan pembelajaran Data Engineering & Big Data Analytics. Gunakan sesuai ketentuan lisensi dari repositori referensi dan aturan kelas atau institusi terkait.
+Project ini dibuat untuk kebutuhan tugas dan pembelajaran Data Engineering pada MCI 2026.

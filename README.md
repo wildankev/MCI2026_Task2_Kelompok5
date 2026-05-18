@@ -1196,7 +1196,7 @@ docker-compose down -v
 
 ## Anggota Kelompok
 
-| Name           | NRP        |
-| ---            | ---        |
-| Bara Semangat Rohmani | 5025241144 |
-| A. Wildan Kevin Assyauqi | 5025241265 |
+| Name | NRP | Kontribusi |
+|------|-----|------------|
+| A. Wildan Kevin Assyauqi | 5025241265 | Penyusunan pipeline (DAG, ingestion, Spark, ClickHouse), docker-compose, struktur repository, dan dokumentasi awal README |
+| Bara Semangat Rohmani | 5025241144 | Perancangan dashboard terpusat Metabase, penambahan query Q25–Q30, penyempurnaan dokumentasi README |

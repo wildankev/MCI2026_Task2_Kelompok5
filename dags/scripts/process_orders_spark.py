@@ -32,11 +32,11 @@ CLICKHOUSE_JDBC_URL = os.getenv(
 )
 CLICKHOUSE_JDBC_DRIVER = os.getenv(
     "CLICKHOUSE_JDBC_DRIVER",
-    "com.clickhouse.jdbc.ClickHouseDriver",
+    "ru.yandex.clickhouse.ClickHouseDriver",
 )
 CLICKHOUSE_JDBC_PACKAGE = os.getenv(
     "CLICKHOUSE_JDBC_PACKAGE",
-    "com.clickhouse:clickhouse-jdbc:0.6.4",
+    "ru.yandex.clickhouse:clickhouse-jdbc:0.3.2",
 )
 
 KEY_COLUMNS = [
@@ -128,8 +128,35 @@ def clean_orders(df_raw):
     return (
         typed_df.dropna(subset=KEY_COLUMNS)
         .dropDuplicates(["order_id", "product_id", "add_to_cart_order"])
-        .withColumn("ingested_at", F.current_timestamp())
+        .withColumn(
+            "ingested_at",
+            F.date_format(F.current_timestamp(), "yyyy-MM-dd HH:mm:ss"),
+        )
         .select(OUTPUT_COLUMNS)
+    )
+
+
+def prepare_clickhouse_df(df_clean):
+    return df_clean.select(
+        "order_id",
+        "user_id",
+        "order_number",
+        "order_dow",
+        "order_hour_of_day",
+        "days_since_prior_order",
+        "eval_set",
+        "product_id",
+        "product_name",
+        "aisle_id",
+        "aisle",
+        "department_id",
+        "department",
+        "add_to_cart_order",
+        "reordered",
+        F.date_format(
+            F.col("ingested_at").cast(T.TimestampType()),
+            "yyyy-MM-dd HH:mm:ss",
+        ).alias("ingested_at"),
     )
 
 
@@ -260,7 +287,9 @@ def load_to_clickhouse():
     processed_uri = f"file://{PROCESSED_PATH.rstrip('/')}"
 
     print("Reading cleaned orders for ClickHouse load...")
-    df_clean = spark.read.parquet(processed_uri).select(OUTPUT_COLUMNS)
+    df_clean = prepare_clickhouse_df(
+        spark.read.parquet(processed_uri).select(OUTPUT_COLUMNS)
+    )
     row_count = df_clean.count()
 
     if row_count > 0:
@@ -268,10 +297,7 @@ def load_to_clickhouse():
         (
             df_clean.write.format("jdbc")
             .option("url", CLICKHOUSE_JDBC_URL)
-            .option(
-                "dbtable",
-                f"{CLICKHOUSE_DATABASE}.{CLICKHOUSE_TABLE}",
-            )
+            .option("dbtable", CLICKHOUSE_TABLE)
             .option("user", CLICKHOUSE_USER)
             .option("password", CLICKHOUSE_PASSWORD)
             .option("driver", CLICKHOUSE_JDBC_DRIVER)

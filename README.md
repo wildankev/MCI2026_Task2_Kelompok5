@@ -442,7 +442,7 @@ Environment variable yang dapat digunakan oleh script:
 | `CLICKHOUSE_PASSWORD` | `rahasia` | Password ClickHouse |
 | `CLICKHOUSE_DATABASE` | `analytics` | Database target |
 | `CLICKHOUSE_TABLE` | `orders_raw` | Tabel target untuk insert |
-| `CLICKHOUSE_JDBC_PACKAGE` | `com.clickhouse:clickhouse-jdbc:0.6.4` | Driver JDBC untuk Spark |
+| `CLICKHOUSE_JDBC_PACKAGE` | `ru.yandex.clickhouse:clickhouse-jdbc:0.3.2` | Driver JDBC untuk Spark |
 
 ---
 

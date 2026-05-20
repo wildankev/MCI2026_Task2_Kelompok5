@@ -324,3 +324,119 @@ GROUP BY
     aisle
 ORDER BY total_items_sold DESC
 LIMIT 30;
+
+-- Q25 | Table | Department scorecard
+-- Business insight: Compares overall department performance in one table.
+SELECT
+    department,
+    count() AS total_items_sold,
+    uniqExact(product_id) AS unique_products,
+    uniqExact(order_id) AS unique_orders,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY department
+ORDER BY total_items_sold DESC;
+
+-- Q26 | Bar | Average basket and reorder behavior by reorder interval segment
+-- Business insight: Shows whether shorter reorder intervals relate to larger carts and stronger repeat buying.
+SELECT
+    CASE
+        WHEN days_since_prior_order < 7 THEN '< 7 days'
+        WHEN days_since_prior_order < 15 THEN '7-14 days'
+        WHEN days_since_prior_order < 22 THEN '15-21 days'
+        ELSE '> 21 days'
+    END AS interval_segment,
+    uniqExact(order_id) AS total_orders,
+    round(count() / uniqExact(order_id), 2) AS avg_basket_size,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+WHERE days_since_prior_order IS NOT NULL
+GROUP BY interval_segment
+ORDER BY min(days_since_prior_order);
+
+-- Q27 | Bar | New versus returning product share by day
+-- Business insight: Compares whether orders contain more new products or reordered products on each weekday.
+WITH order_composition AS (
+    SELECT
+        order_id,
+        any(order_dow) AS order_dow,
+        round(sumIf(1, reordered = 0) / count() * 100, 2) AS pct_new_products,
+        round(sumIf(1, reordered = 1) / count() * 100, 2) AS pct_returning_products
+    FROM analytics.orders_raw
+    GROUP BY order_id
+)
+SELECT
+    order_dow,
+    arrayElement(
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        order_dow + 1
+    ) AS day_name,
+    round(avg(pct_new_products), 2) AS avg_pct_new,
+    round(avg(pct_returning_products), 2) AS avg_pct_returning
+FROM order_composition
+GROUP BY order_dow
+ORDER BY order_dow;
+
+-- Q28 | Table | Top aisles per department
+-- Business insight: Finds the leading aisles inside each department for drill-down category analysis.
+WITH aisle_metrics AS (
+    SELECT
+        department,
+        aisle,
+        count() AS total_items_sold,
+        round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct,
+        rank() OVER (
+            PARTITION BY department
+            ORDER BY count() DESC
+        ) AS rank_in_department
+    FROM analytics.orders_raw
+    GROUP BY
+        department,
+        aisle
+)
+SELECT
+    department,
+    aisle,
+    total_items_sold,
+    reorder_rate_pct,
+    rank_in_department
+FROM aisle_metrics
+WHERE rank_in_department <= 3
+ORDER BY
+    department,
+    rank_in_department;
+
+-- Q29 | Bar | User behavior by order frequency bucket
+-- Business insight: Segments users by order frequency to compare basket size and reorder behavior.
+WITH user_stats AS (
+    SELECT
+        user_id,
+        uniqExact(order_id) AS order_count,
+        round(count() / uniqExact(order_id), 2) AS avg_basket_size,
+        round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+    FROM analytics.orders_raw
+    GROUP BY user_id
+)
+SELECT
+    CASE
+        WHEN order_count = 1 THEN '1 order'
+        WHEN order_count <= 5 THEN '2-5 orders'
+        WHEN order_count <= 10 THEN '6-10 orders'
+        ELSE '> 10 orders'
+    END AS frequency_bucket,
+    count() AS total_users,
+    round(avg(avg_basket_size), 2) AS avg_basket_size,
+    round(avg(reorder_rate_pct), 2) AS avg_reorder_rate_pct
+FROM user_stats
+GROUP BY frequency_bucket
+ORDER BY min(order_count);
+
+-- Q30 | Line | Reorder rate by hour of day
+-- Business insight: Complements hourly order volume by showing when repeat buying is strongest.
+SELECT
+    order_hour_of_day AS hour_of_day,
+    uniqExact(order_id) AS total_orders,
+    round(sum(reordered) / count() * 100, 2) AS reorder_rate_pct
+FROM analytics.orders_raw
+GROUP BY order_hour_of_day
+ORDER BY order_hour_of_day;
